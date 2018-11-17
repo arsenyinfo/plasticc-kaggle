@@ -1,5 +1,7 @@
+from typing import Union
+
 import pandas as pd
-from tsfresh import extract_features, extract_relevant_features
+from tsfresh import extract_features
 from tqdm import tqdm
 import joblib as jl
 
@@ -29,9 +31,9 @@ def stream_objects(path: str):
             acc.append(line)
 
 
-def make_features(chunk: pd.DataFrame) -> dict:
+def make_features(chunk: pd.DataFrame, n_jobs: int = 0) -> dict:
     chunk = chunk.fillna(method='ffill').fillna(value=0)
-    features = extract_features(chunk, column_id='passband', disable_progressbar=True, n_jobs=8)
+    features = extract_features(chunk, column_id='passband', disable_progressbar=True, n_jobs=n_jobs)
 
     result = {}
     for col in features.columns:
@@ -41,7 +43,9 @@ def make_features(chunk: pd.DataFrame) -> dict:
     return result
 
 
-def merge(obj_id: int, chunk: pd.DataFrame, meta: dict):
+def merge(obj_id: int, chunk: Union[pd.DataFrame, str], meta: dict):
+    if not isinstance(chunk, pd.DataFrame):
+        chunk = pd.read_csv(chunk, engine='c')
     features = make_features(chunk)
     features.update(meta)
 
@@ -75,7 +79,7 @@ def fetch_batch_from_gen(batch_size, g):
     return list(filter(None, [_next(g) for _ in range(batch_size)]))
 
 
-def process_dataset(prefix: str, batch_size=2):
+def process_dataset(prefix: str, batch_size=72 * 8):
     features = make_lazy_features(data_path=f'data/{prefix}_set.csv',
                                   metadata_path=f'data/{prefix}_set_metadata.csv')
     pool = jl.Parallel(n_jobs=2, backend='sequential')
