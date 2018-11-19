@@ -79,17 +79,17 @@ def fetch_batch_from_gen(batch_size, g):
     return list(filter(None, [_next(g) for _ in range(batch_size)]))
 
 
-def process_dataset(prefix: str, batch_size=72 * 8):
+def process_dataset(prefix: str, batch_size=8):
     features = make_lazy_features(data_path=f'data/{prefix}_set.csv',
                                   metadata_path=f'data/{prefix}_set_metadata.csv')
-    pool = jl.Parallel(n_jobs=2, backend='sequential')
+    pool = jl.Parallel(n_jobs=jl.cpu_count(), backend='multiprocessing')
 
     with open(f'data/processed_{prefix}.csv', 'w') as out:
         current_keys = None
         is_finished = False
 
         while not is_finished:
-            batch = fetch_batch_from_gen(batch_size=batch_size, g=features)
+            batch = fetch_batch_from_gen(batch_size=batch_size * jl.cpu_count(), g=features)
             for obj_id, keys, values in pool(batch):
                 if current_keys is None:
                     keys = ['object_id', ] + list(keys)
