@@ -19,18 +19,17 @@ from fire import Fire
 
 
 class Baseline(nn.Module):
-    def __init__(self, n_features):
+    def __init__(self, n_features, inner_size=1024):
         super().__init__()
-        self.bn = nn.BatchNorm1d(num_features=n_features)
+        self.features = nn.Linear(n_features, inner_size)
         self.model = nn.Sequential(
-            nn.Linear(n_features, 1024),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Dropout(p=.5),
-            nn.Linear(1024, 14),
+            nn.Linear(inner_size, 14),
         )
 
     def forward(self, x):
-        x = self.bn(x)
+        x = self.features(x)
         return self.model(x)
 
 
@@ -60,6 +59,7 @@ def map_classes(y_full):
 
 def read_train():
     data = pd.read_csv('data/processed_training.csv', engine='c', sep=';')
+    data.pop('object_id')
     y_full = data.pop('target').values
     x_full = data.values.astype('float32')
     x_full[np.isnan(x_full)] = 0
@@ -77,7 +77,7 @@ def prepare_data():
     pipeline = make_pipeline(imputer, vt, StandardScaler())
 
     x_full = pipeline.fit_transform(x_full)
-    jl.dump(imputer, 'preprocess.bin')
+    jl.dump(pipeline, 'preprocess.bin')
     y_full = map_classes(y_full)
     x_full = x_full.astype('float32')
 
@@ -111,7 +111,8 @@ class Trainer:
                  reg_lambda: float = .00002,
                  reg_norm: int = 1,
                  device: str = 'cuda:0',
-                 checkpoint: str = './model.pt'):
+                 checkpoint: str = './model.pt',
+                 ):
         self.epochs = epochs
         self.model = model.to(device)
         self.device = device
@@ -193,9 +194,11 @@ class Trainer:
             self.fit_one_epoch(i)
 
 
-def fit(**kwargs):
+def fit(inner_size=1024, **kwargs):
     train, val = make_dataloaders()
-    trainer = Trainer(model=Baseline(n_features=train.dataset.features_shape[1]),
+    trainer = Trainer(model=Baseline(n_features=train.dataset.features_shape[1],
+                                     inner_size=inner_size,
+                                     ),
                       train=train,
                       val=val,
                       loss_fn=F.cross_entropy,
